@@ -1,0 +1,8 @@
+﻿# JetBrains / Rider / IDEA
+.idea/
+**/.idea/
+*.DotSettings.user
+
+# Build folders
+**/bin/
+**/obj/
