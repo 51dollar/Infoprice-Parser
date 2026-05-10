@@ -126,7 +126,14 @@ public sealed class ParsingPipeline
             if (errors > 0)
                 System.Console.WriteLine($"  Ошибок по штрихкодам: {errors}");
 
-            await _monitoringReportService.ProcessFileAsync(filePath, outputPath, cancellationToken);
+            var outputData = results
+                .Select(r => (r.Record.Barcode, r.Prices))
+                .DistinctBy(x => x.Barcode)
+                .ToDictionary(x => x.Barcode, x => x.Prices, StringComparer.OrdinalIgnoreCase);
+
+            await _monitoringReportService.ProcessFileAsync(filePath, outputData, cancellationToken);
+
+            outputData.Clear();
 
             return true;
         }

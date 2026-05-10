@@ -62,7 +62,6 @@ public sealed class ExcelWriter : IExcelWriter
         cancellationToken.ThrowIfCancellationRequested();
         EnsureCreated();
 
-        _worksheet!.Columns().AdjustToContents();
         _workbook!.SaveAs(_filePath);
 
         return Task.CompletedTask;

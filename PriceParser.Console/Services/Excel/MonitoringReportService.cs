@@ -2,6 +2,7 @@ using System.Globalization;
 using ClosedXML.Excel;
 using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
+using PriceParser.Console.Core.Models;
 
 namespace PriceParser.Console.Services.Excel;
 
@@ -16,7 +17,10 @@ public sealed class MonitoringReportService : IMonitoringReportService
         _logger = logger;
     }
 
-    public async Task ProcessFileAsync(string inputFilePath, string outputFilePath, CancellationToken cancellationToken)
+    public async Task ProcessFileAsync(
+        string inputFilePath,
+        IReadOnlyDictionary<string, ParsedProductPrices> outputData,
+        CancellationToken cancellationToken)
     {
         var mappings = _settings.Monitoring.StoreMappings
             .Where(m => !string.IsNullOrWhiteSpace(m.TargetColumnHeader)
@@ -29,21 +33,20 @@ public sealed class MonitoringReportService : IMonitoringReportService
             return;
         }
 
+        if (outputData.Count == 0)
+        {
+            System.Console.WriteLine("  Мониторинг пропущен: нет данных.");
+            return;
+        }
+
         var inputName = Path.GetFileName(inputFilePath);
 
         try
         {
             System.Console.WriteLine($"  Мониторинг: {inputName}");
 
-            var outputData = ReadOutputData(outputFilePath, mappings, cancellationToken);
-
-            if (outputData.Count == 0)
-            {
-                System.Console.WriteLine("    Нет данных для мониторинга.");
-                return;
-            }
-
-            FillInputFile(inputFilePath, outputData, mappings, cancellationToken);
+            var outputFlat = FlattenOutputData(outputData, mappings);
+            FillInputFile(inputFilePath, outputFlat, mappings, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -51,63 +54,33 @@ public sealed class MonitoringReportService : IMonitoringReportService
         }
     }
 
-    private Dictionary<string, Dictionary<string, float>> ReadOutputData(
-        string outputFilePath,
-        MonitoringStoreMapping[] mappings,
-        CancellationToken cancellationToken)
+    private static Dictionary<string, Dictionary<string, float>> FlattenOutputData(
+        IReadOnlyDictionary<string, ParsedProductPrices> outputData,
+        MonitoringStoreMapping[] mappings)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        var result = new Dictionary<string, Dictionary<string, float>>(StringComparer.OrdinalIgnoreCase);
 
-        using var wb = new XLWorkbook(outputFilePath);
-        var ws = wb.Worksheets.First();
-        var used = ws.RangeUsed();
-
-        if (used is null)
-            return [];
-
-        var sourceHeaders = mappings.Select(m => m.SourceColumnHeader).ToArray();
-        var storeColumns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var cell in used.Row(1).CellsUsed())
+        foreach (var (barcode, prices) in outputData)
         {
-            var header = cell.GetFormattedString().Trim();
-            if (header.Length == 0)
-                continue;
-
-            foreach (var src in sourceHeaders)
-            {
-                if (header.Contains(src, StringComparison.OrdinalIgnoreCase))
-                {
-                    storeColumns[src] = cell.Address.ColumnNumber;
-                    break;
-                }
-            }
-        }
-
-        var result = new Dictionary<string, Dictionary<string, float>>();
-        var lastRow = used.LastRow().RowNumber();
-
-        for (var r = 2; r <= lastRow; r++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var barcode = ws.Cell(r, 1).GetFormattedString().Trim();
             if (!IsBarcode(barcode))
                 continue;
 
-            var prices = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            var storePrices = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var (storeName, col) in storeColumns)
+            foreach (var mapping in mappings)
             {
-                var raw = ws.Cell(r, col).GetFormattedString().Trim();
-                if (float.TryParse(raw.Replace(',', '.'), NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out var val))
+                foreach (var (store, price) in prices.PricesByStore)
                 {
-                    prices[storeName] = val;
+                    if (store.Contains(mapping.SourceColumnHeader, StringComparison.OrdinalIgnoreCase))
+                    {
+                        storePrices[mapping.SourceColumnHeader] = price;
+                        break;
+                    }
                 }
             }
 
-            result[barcode] = prices;
+            if (storePrices.Count > 0)
+                result[barcode] = storePrices;
         }
 
         return result;

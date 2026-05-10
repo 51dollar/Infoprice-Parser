@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PriceParser.Console.Configuration;
@@ -32,11 +33,10 @@ services.AddSingleton<ILoggerService, FileLoggerService>();
 services.AddSingleton<PriceMappingService>();
 services.AddSingleton<ParsingPipeline>();
 
-services.AddHttpClient(HttpFetcher.ClientName, (sp, client) =>
+services.AddSingleton<HttpClient>(sp =>
 {
-    var settings = sp.GetRequiredService<AppSettings>();
-    client.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
-    client.BaseAddress = new Uri("https://infoprice.by/");
+    var s = sp.GetRequiredService<AppSettings>();
+    return new HttpClient { Timeout = TimeSpan.FromSeconds(s.TimeoutSeconds) };
 });
 
 await using var provider = services.BuildServiceProvider();
