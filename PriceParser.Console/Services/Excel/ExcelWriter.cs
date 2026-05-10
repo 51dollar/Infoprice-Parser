@@ -24,8 +24,11 @@ public sealed class ExcelWriter : IExcelWriter
 
     public void Create(string filePath, IReadOnlyList<string> storeHeaders)
     {
+        _workbook?.Dispose();
+
         _headers = storeHeaders;
         _filePath = filePath;
+        _nextRow = 2;
         _workbook = new XLWorkbook();
         _worksheet = _workbook.Worksheets.Add("Prices");
 

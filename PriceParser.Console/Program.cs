@@ -27,8 +27,8 @@ services.AddSingleton<IExcelReader, ExcelReader>();
 services.AddSingleton<IExcelWriter, ExcelWriter>();
 services.AddSingleton<IHttpFetcher, HttpFetcher>();
 services.AddSingleton<IPriceParser, InfoPriceParser>();
+services.AddSingleton<IMonitoringReportService, MonitoringReportService>();
 services.AddSingleton<ILoggerService, FileLoggerService>();
-services.AddSingleton<HtmlPriceExtractor>();
 services.AddSingleton<PriceMappingService>();
 services.AddSingleton<ParsingPipeline>();
 
