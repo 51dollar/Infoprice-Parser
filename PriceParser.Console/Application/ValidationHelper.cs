@@ -1,7 +1,8 @@
 using PriceParser.Console.Configuration;
 
-namespace PriceParser.Console.Utils;
+namespace PriceParser.Console.Application;
 
+/// <summary>Валидация настроек приложения перед стартом.</summary>
 public static class ValidationHelper
 {
     public static void Validate(AppSettings settings)

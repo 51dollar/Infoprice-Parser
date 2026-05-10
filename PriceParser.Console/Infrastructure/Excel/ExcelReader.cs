@@ -3,8 +3,12 @@ using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
 
-namespace PriceParser.Console.Services.Excel;
+namespace PriceParser.Console.Infrastructure.Excel;
 
+/// <summary>
+/// Читает Excel-файл: ищет колонку с названием, содержащим фрагмент из BarcodeColumnNames,
+/// собирает все штрихкоды ниже заголовка до конца used-range листа.
+/// </summary>
 public sealed class ExcelReader : IExcelReader
 {
     private readonly string[] _barcodeColumnNames;

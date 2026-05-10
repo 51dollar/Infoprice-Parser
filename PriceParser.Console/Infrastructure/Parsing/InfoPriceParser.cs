@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
 
-namespace PriceParser.Console.Services.Parsing;
+namespace PriceParser.Console.Infrastructure.Parsing;
 
 /// <summary>
 /// Преобразует JSON-ответ InfoPrice API в доменный результат с ценами.

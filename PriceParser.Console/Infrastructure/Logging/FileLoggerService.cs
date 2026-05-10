@@ -1,8 +1,13 @@
 using System.Text;
 using PriceParser.Console.Core.Interfaces;
 
-namespace PriceParser.Console.Services.Logging;
+namespace PriceParser.Console.Infrastructure.Logging;
 
+/// <summary>
+/// Логирование ошибок: пишет в файл logs/run_yyyy-MM-dd.txt и дублирует
+/// в консоль красным цветом. Только ошибки — информационные сообщения
+/// идут напрямую в System.Console.
+/// </summary>
 public sealed class FileLoggerService : ILoggerService
 {
     private readonly string _logsFolder;

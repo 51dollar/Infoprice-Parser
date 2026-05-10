@@ -1,9 +1,9 @@
 using ClosedXML.Excel;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
-using PriceParser.Console.Services.Parsing;
+using PriceParser.Console.Application;
 
-namespace PriceParser.Console.Services.Excel;
+namespace PriceParser.Console.Infrastructure.Excel;
 
 /// <summary>
 /// Формирует итоговый Excel-файл и сохраняет его один раз после обработки.

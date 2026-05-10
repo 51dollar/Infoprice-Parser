@@ -2,11 +2,13 @@ using System.Collections.Concurrent;
 using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
-using PriceParser.Console.Services.Parsing;
-using PriceParser.Console.Utils;
 
-namespace PriceParser.Console.Orchestration;
+namespace PriceParser.Console.Application;
 
+/// <summary>
+/// Главный оркестратор: обходит файлы во входной папке, для каждого запускает
+/// параллельный опрос API InfoPrice, сохраняет результат и строит мониторинг.
+/// </summary>
 public sealed class ParsingPipeline
 {
     private static readonly string[] ExcelMasks = ["*.xlsx", "*.xlsm", "*.xltx", "*.xltm"];
@@ -37,6 +39,7 @@ public sealed class ParsingPipeline
         _logger = logger;
     }
 
+    /// <summary>Точка входа: поиск файлов, итерация по ним, запуск обработки.</summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         System.Console.WriteLine("Запуск обработки прайс-листов.");
@@ -144,6 +147,7 @@ public sealed class ParsingPipeline
         }
     }
 
+    /// <summary>Получает цены для штрихкода: проверяет кэш, при промахе — HTTP + парсинг.</summary>
     private async Task<PriceLookupResult> GetPricesAsync(
         string barcode,
         ConcurrentDictionary<string, ParsedProductPrices> cache,
@@ -204,5 +208,6 @@ public sealed class ParsingPipeline
         }
     }
 
+    /// <summary>Результат поиска цен: успешен ли запрос, есть ли цены, сами цены.</summary>
     private sealed record PriceLookupResult(bool ServiceSucceeded, bool HasPrices, ParsedProductPrices Prices);
 }

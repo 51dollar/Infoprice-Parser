@@ -3,8 +3,13 @@ using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Utils;
 
-namespace PriceParser.Console.Services.Network;
+namespace PriceParser.Console.Infrastructure.Http;
 
+/// <summary>
+/// HTTP-клиент для API InfoPrice. Отправляет POST с JSON-шаблоном,
+/// подставляя штрихкод вместо плейсхолдера. Использует RetryHelper
+/// для повторных попыток при временных ошибках.
+/// </summary>
 public sealed class HttpFetcher : IHttpFetcher
 {
     public const string ClientName = "InfoPrice";

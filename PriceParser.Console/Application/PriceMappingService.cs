@@ -1,6 +1,6 @@
 using PriceParser.Console.Core.Models;
 
-namespace PriceParser.Console.Services.Parsing;
+namespace PriceParser.Console.Application;
 
 /// <summary>
 /// Сопоставляет магазины и цены по индексу из HTML-таблицы.

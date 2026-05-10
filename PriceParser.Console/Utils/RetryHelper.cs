@@ -3,6 +3,11 @@ using System.Net.Http;
 
 namespace PriceParser.Console.Utils;
 
+/// <summary>
+/// Утилита повторных попыток: выполняет action до retryCount раз,
+/// если исключение классифицируется как временное (транзиентное).
+/// Между попытками — возрастающая задержка (200ms * номер попытки).
+/// </summary>
 public static class RetryHelper
 {
     public static async Task<T> ExecuteAsync<T>(Func<Task<T>> action, int retryCount, CancellationToken cancellationToken)

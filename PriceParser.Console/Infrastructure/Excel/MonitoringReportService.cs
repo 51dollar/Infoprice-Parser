@@ -4,8 +4,12 @@ using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
 
-namespace PriceParser.Console.Services.Excel;
+namespace PriceParser.Console.Infrastructure.Excel;
 
+/// <summary>
+/// Строит мониторинговый отчёт: открывает исходный файл, находит колонки магазинов
+/// и заполняет их ценами из выходных данных. Сохраняет копию в processed/.
+/// </summary>
 public sealed class MonitoringReportService : IMonitoringReportService
 {
     private readonly AppSettings _settings;

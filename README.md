@@ -22,32 +22,47 @@ InfoPrice.by агрегирует цены по разным магазинам 
    Санта, Соседи.
 5. Результат пишет в новый excel-файл в папку `output`. Название формируется
    как `{имя_исходного_файла}-price-{дата}.xlsx`.
-6. Обработанный исходник перемещается в `processed`.
-7. В конце собирается мониторинговый отчёт — берёт данные из `processed`,
-   находит соответствующие файлы в `output` и склеивает их через VLOOKUP-формулы
-   в отдельный файл `*-price-monitoring-*.xlsx`.
+6. Сразу после сохранения результата строится мониторинговый отчёт —
+   per-файл, данные передаются в память без переоткрытия Excel.
+7. Обработанные исходники остаются на месте.
 
-## Структура папок
+## Архитектура
+
+Проект разделён на четыре слоя по принципу чистой архитектуры:
 
 ```
 PriceParser/
 ├── input/          — сюда кладёшь excel-файлы со штрихкодами
 ├── output/         — сюда программа складывает результат
-├── processed/      — сюда перемещаются обработанные исходники
+├── processed/      — (зарезервировано)
 └── PriceParser.Console/
-    ├── Program.cs
-    ├── Orchestration/    — основной цикл обработки
-    ├── Services/
-    │   ├── Excel/        — чтение и запись excel (ClosedXML)
-    │   ├── Network/      — http-клиент для InfoPrice
-    │   ├── Parsing/      — разбор json-ответа и маппинг магазинов
-    │   └── Logging/      — логирование в файл и консоль
-    ├── Core/
-    │   ├── Interfaces/   — абстракции для всего перечисленного
-    │   └── Models/       — модельки данных
-    ├── Configuration/    — настройки из appsettings.json
-    └── Utils/             — валидация и retry-логика
+    ├── Program.cs              — точка входа, DI-контейнер
+    │
+    ├── Core/                   — Domain: модели и интерфейсы
+    │   ├── Interfaces/         —   абстракции сервисов
+    │   └── Models/             —   модельки данных
+    │
+    ├── Application/            — Use Cases: бизнес-логика, оркестрация
+    │   ├── ParsingPipeline.cs  —   основной цикл обработки
+    │   ├── PriceMappingService —   маппинг магазинов
+    │   └── ValidationHelper    —   валидация конфига
+    │
+    ├── Infrastructure/         — реализация внешних сервисов
+    │   ├── Excel/              —   ClosedXML: чтение, запись, мониторинг
+    │   ├── Http/               —   HTTP-клиент для InfoPrice
+    │   ├── Logging/            —   логирование в файл
+    │   └── Parsing/            —   разбор JSON-ответа InfoPrice
+    │
+    ├── Configuration/          — настройки из appsettings.json
+    └── Utils/                  — RetryHelper
 ```
+
+### Зависимости между слоями
+
+- **Core** — ни от кого не зависит
+- **Application** — зависит только от `Core`
+- **Infrastructure** — зависит от `Core` и частично от `Application`
+- **Program.cs** — собирает всё через DI
 
 ## Настройка
 
@@ -61,6 +76,7 @@ PriceParser/
 - **RequestDelayMs** — задержка между запросами (чтобы не забанили).
 - **TimeoutSeconds** — таймаут http-запроса.
 - **RetryCount** — сколько раз перезапрашивать при ошибке.
+- **MaxParallelism** — количество параллельных запросов к API.
 
 ## Чего тут нет
 
@@ -72,7 +88,8 @@ PriceParser/
 ## Зависимости
 
 - ClosedXML — работа с excel-файлами
-- Microsoft.Extensions.* — di, конфигурация, http-клиент
+- Microsoft.Extensions.Configuration.Json — конфигурация
+- Microsoft.Extensions.DependencyInjection — di-контейнер
 - .NET 10
 
 ## Как собрать и запустить
