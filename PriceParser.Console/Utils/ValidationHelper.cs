@@ -13,6 +13,7 @@ public static class ValidationHelper
         EnsurePath(settings.OutputFolder, nameof(settings.OutputFolder));
         EnsurePath(settings.ProcessedFolder, nameof(settings.ProcessedFolder));
         EnsureTexts(settings.BarcodeColumnNames, nameof(settings.BarcodeColumnNames));
+        EnsurePositive(settings.MaxParallelism, nameof(settings.MaxParallelism));
     }
 
     private static void EnsurePositive(int value, string name)

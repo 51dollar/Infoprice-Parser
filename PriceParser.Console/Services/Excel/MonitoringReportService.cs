@@ -25,7 +25,7 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
         if (mappings.Length == 0)
         {
-            await _logger.LogInfoAsync("Мониторинг пропущен: StoreMappings пустой.", cancellationToken);
+            System.Console.WriteLine("  Мониторинг пропущен: StoreMappings пустой.");
             return;
         }
 
@@ -33,19 +33,17 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
         try
         {
+            System.Console.WriteLine($"  Мониторинг: {inputName}");
+
             var outputData = ReadOutputData(outputFilePath, mappings, cancellationToken);
 
             if (outputData.Count == 0)
             {
-                await _logger.LogWarningAsync(
-                    $"Мониторинг: в '{Path.GetFileName(outputFilePath)}' нет данных.", cancellationToken);
+                System.Console.WriteLine("    Нет данных для мониторинга.");
                 return;
             }
 
             FillInputFile(inputFilePath, outputData, mappings, cancellationToken);
-
-            await _logger.LogInfoAsync(
-                $"Мониторинг для '{inputName}' завершён.", cancellationToken);
         }
         catch (Exception ex)
         {
@@ -128,13 +126,12 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
         if (sheetInfo is null)
         {
-            _logger.LogWarningAsync(
-                $"Мониторинг: в '{Path.GetFileName(inputFilePath)}' не найдена таблица с ШК и магазинами.",
-                CancellationToken.None).Wait();
+            System.Console.WriteLine("    Не найдена таблица с ШК и магазинами.");
             return;
         }
 
         var lastRow = sheetInfo.UsedRange.LastRow().RowNumber();
+        var filledCount = 0;
 
         for (var r = sheetInfo.HeaderRow + 1; r <= lastRow; r++)
         {
@@ -151,8 +148,7 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
             foreach (var mapping in mappings)
             {
-                if (!sheetInfo.StoreColumns.TryGetValue(
-                        mapping.TargetColumnHeader, out var col))
+                if (!sheetInfo.StoreColumns.TryGetValue(mapping.TargetColumnHeader, out var col))
                     continue;
 
                 if (!prices.TryGetValue(mapping.SourceColumnHeader, out var price))
@@ -160,6 +156,8 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
                 sheetInfo.Worksheet.Cell(r, col).SetValue(price);
             }
+
+            filledCount++;
         }
 
         foreach (var ws in wb.Worksheets)
@@ -171,8 +169,7 @@ public sealed class MonitoringReportService : IMonitoringReportService
         Directory.CreateDirectory(_settings.ProcessedFolder);
         wb.SaveAs(outputPath);
 
-        _logger.LogInfoAsync(
-            $"Сохранён файл мониторинга в processed: {Path.GetFileName(outputPath)}", CancellationToken.None).Wait();
+        System.Console.WriteLine($"    Заполнено строк: {filledCount}. Сохранён: {Path.GetFileName(outputPath)}");
     }
 
     private SheetInfo? FindSheet(XLWorkbook workbook, MonitoringStoreMapping[] mappings)

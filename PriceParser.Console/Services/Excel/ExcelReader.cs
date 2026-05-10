@@ -5,30 +5,25 @@ using PriceParser.Console.Core.Models;
 
 namespace PriceParser.Console.Services.Excel;
 
-/// <summary>
-/// Читает штрихкоды из найденных колонок на всех листах Excel-файла.
-/// </summary>
 public sealed class ExcelReader : IExcelReader
 {
-    private readonly AppSettings _settings;
-    private readonly ILoggerService _logger;
+    private readonly string[] _barcodeColumnNames;
 
-    public ExcelReader(AppSettings settings, ILoggerService logger)
+    public ExcelReader(AppSettings settings)
     {
-        _settings = settings;
-        _logger = logger;
+        _barcodeColumnNames = settings.BarcodeColumnNames;
     }
 
     public async Task<ExcelBarcodeReadResult> ReadBarcodesAsync(string filePath, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        await _logger.LogInfoAsync($"Читаю Excel-файл: {filePath}", cancellationToken);
+        System.Console.WriteLine($"Читаю файл: {filePath}");
 
         using var workbook = new XLWorkbook(filePath);
         if (!workbook.Worksheets.Any())
         {
-            await _logger.LogWarningAsync($"В файле {Path.GetFileName(filePath)} нет листов.", cancellationToken);
+            System.Console.WriteLine($"  Файл не содержит листов.");
             return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
         }
 
@@ -42,40 +37,29 @@ public sealed class ExcelReader : IExcelReader
             var usedRange = worksheet.RangeUsed();
             if (usedRange is null)
             {
-                await _logger.LogWarningAsync(
-                    $"В файле {Path.GetFileName(filePath)} лист '{worksheet.Name}' пустой.",
-                    cancellationToken);
-
+                System.Console.WriteLine($"  Лист '{worksheet.Name}' — пустой, пропущен.");
                 continue;
             }
 
-            var headerCells = FindHeaderCells(usedRange, _settings.BarcodeColumnNames, cancellationToken);
+            var headerCells = FindHeaderCells(usedRange, _barcodeColumnNames, cancellationToken);
             foreach (var headerCell in headerCells)
             {
                 var headerText = headerCell.GetFormattedString().Trim();
-                matchedColumns.Add($"лист '{worksheet.Name}', ячейка {headerCell.Address}, заголовок '{headerText}'");
+                matchedColumns.Add($"лист '{worksheet.Name}', ячейка {headerCell.Address}");
 
-                await _logger.LogInfoAsync(
-                    $"Колонка штрихкодов найдена: лист '{worksheet.Name}', ячейка {headerCell.Address}, заголовок '{headerText}'.",
-                    cancellationToken);
+                System.Console.WriteLine($"  Колонка ШК: лист '{worksheet.Name}', ячейка {headerCell.Address} ('{headerText}')");
 
-                ReadColumnValues(filePath, worksheet, usedRange, headerCell, records, cancellationToken);
+                ReadColumnValues(worksheet, usedRange, headerCell, records, cancellationToken);
             }
         }
 
         if (matchedColumns.Count == 0)
         {
-            await _logger.LogWarningAsync(
-                $"В файле {Path.GetFileName(filePath)} не найдены колонки, содержащие одно из значений: {string.Join(", ", _settings.BarcodeColumnNames)}.",
-                cancellationToken);
-
+            System.Console.WriteLine($"  Колонка с штрихкодом не найдена.");
             return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
         }
 
-        await _logger.LogInfoAsync(
-            $"Из файла {Path.GetFileName(filePath)} прочитано штрихкодов: {records.Count}.",
-            cancellationToken);
-
+        System.Console.WriteLine($"  Прочитано штрихкодов: {records.Count}.");
         return new ExcelBarcodeReadResult(true, records, matchedColumns);
     }
 
@@ -105,7 +89,6 @@ public sealed class ExcelReader : IExcelReader
     }
 
     private static void ReadColumnValues(
-        string filePath,
         IXLWorksheet worksheet,
         IXLRange usedRange,
         IXLCell headerCell,
@@ -121,11 +104,9 @@ public sealed class ExcelReader : IExcelReader
 
             var barcode = worksheet.Cell(rowNumber, barcodeColumnNumber).GetFormattedString().Trim();
             if (!IsBarcodeValue(barcode))
-            {
                 continue;
-            }
 
-            records.Add(new BarcodeRecord(barcode, filePath, rowNumber));
+            records.Add(new BarcodeRecord(barcode, worksheet.Name, rowNumber));
         }
     }
 

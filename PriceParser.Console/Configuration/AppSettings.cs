@@ -20,6 +20,8 @@ public sealed class AppSettings
     public int TimeoutSeconds { get; set; } = 15;
 
     public int RetryCount { get; set; } = 3;
+
+    public int MaxParallelism { get; set; } = 4;
 }
 
 public sealed class MonitoringSettings

@@ -3,9 +3,6 @@ using PriceParser.Console.Core.Interfaces;
 
 namespace PriceParser.Console.Services.Logging;
 
-/// <summary>
-/// Записывает ход выполнения и ошибки в консоль и дневной лог-файл.
-/// </summary>
 public sealed class FileLoggerService : ILoggerService
 {
     private readonly string _logsFolder;
@@ -19,20 +16,10 @@ public sealed class FileLoggerService : ILoggerService
         _logsFolder = Path.Combine(basePath, "logs");
     }
 
-    public Task LogInfoAsync(string message, CancellationToken cancellationToken)
-    {
-        return LogAsync("INFO", message, cancellationToken);
-    }
-
-    public Task LogWarningAsync(string message, CancellationToken cancellationToken)
-    {
-        return LogAsync("WARN", message, cancellationToken);
-    }
-
-    public async Task LogErrorAsync(string barcode, Exception exception, CancellationToken cancellationToken)
+    public async Task LogErrorAsync(string context, Exception exception, CancellationToken cancellationToken)
     {
         var builder = new StringBuilder(512);
-        builder.AppendLine($"Context: {barcode}");
+        builder.AppendLine($"Context: {context}");
         builder.AppendLine($"Message: {exception.Message}");
         builder.AppendLine("StackTrace:");
         builder.AppendLine(exception.StackTrace ?? string.Empty);
@@ -49,7 +36,10 @@ public sealed class FileLoggerService : ILoggerService
         var logPath = Path.Combine(_logsFolder, $"run_{timestamp:yyyy-MM-dd}.txt");
         var entry = $"{header} {message}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
 
+        System.Console.ForegroundColor = ConsoleColor.Red;
         System.Console.WriteLine($"{header} {message}");
+        System.Console.ResetColor();
+
         await File.AppendAllTextAsync(logPath, entry, cancellationToken);
     }
 }

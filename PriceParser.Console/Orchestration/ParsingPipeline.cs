@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
@@ -38,96 +39,92 @@ public sealed class ParsingPipeline
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        await _logger.LogInfoAsync("Запуск обработки прайс-листов.", cancellationToken);
+        System.Console.WriteLine("Запуск обработки прайс-листов.");
+        System.Console.WriteLine($"  Папка ввода:    {_settings.InputFolder}");
+        System.Console.WriteLine($"  Папка вывода:   {_settings.OutputFolder}");
+        System.Console.WriteLine($"  Потоков:        {_settings.MaxParallelism}");
 
         ValidationHelper.Validate(_settings);
-
-        await _logger.LogInfoAsync(
-            $"Настройки: InputFolder='{_settings.InputFolder}', OutputFolder='{_settings.OutputFolder}', BarcodeColumnNames='{string.Join(", ", _settings.BarcodeColumnNames)}', RequestDelayMs={_settings.RequestDelayMs}, TimeoutSeconds={_settings.TimeoutSeconds}, RetryCount={_settings.RetryCount}.",
-            cancellationToken);
 
         Directory.CreateDirectory(_settings.InputFolder);
         Directory.CreateDirectory(_settings.OutputFolder);
         Directory.CreateDirectory(_settings.ProcessedFolder);
-
-        await _logger.LogInfoAsync("Папки проверены/созданы.", cancellationToken);
+        System.Console.WriteLine("Папки проверены.");
 
         var inputFiles = GetInputFiles(_settings.InputFolder);
-        await _logger.LogInfoAsync($"Найдено Excel-файлов для обработки: {inputFiles.Count}.", cancellationToken);
+        System.Console.WriteLine($"Найдено файлов: {inputFiles.Count}");
 
         if (inputFiles.Count == 0)
         {
-            await _logger.LogWarningAsync("Во входной папке нет Excel-файлов. Обработка завершена.", cancellationToken);
+            System.Console.WriteLine("Нет Excel-файлов для обработки. Завершено.");
             return;
         }
 
-        var cache = new Dictionary<string, ParsedProductPrices>(StringComparer.OrdinalIgnoreCase);
+        var cache = new ConcurrentDictionary<string, ParsedProductPrices>(StringComparer.OrdinalIgnoreCase);
         var processedCount = 0;
 
         foreach (var filePath in inputFiles)
         {
             if (await ProcessFileAsync(filePath, cache, cancellationToken))
-            {
                 processedCount++;
-            }
         }
 
-        await _logger.LogInfoAsync(
-            $"Обработка завершена. Файлов обработано: {processedCount} из {inputFiles.Count}.", cancellationToken);
+        System.Console.WriteLine($"Обработка завершена. Обработано файлов: {processedCount} из {inputFiles.Count}.");
     }
 
     private async Task<bool> ProcessFileAsync(
         string filePath,
-        Dictionary<string, ParsedProductPrices> cache,
+        ConcurrentDictionary<string, ParsedProductPrices> cache,
         CancellationToken cancellationToken)
     {
         var sourceFileName = Path.GetFileName(filePath);
 
         try
         {
-            await _logger.LogInfoAsync($"Начинаю обработку файла: {sourceFileName}", cancellationToken);
+            System.Console.WriteLine($"--- {sourceFileName} ---");
 
             var readResult = await _excelReader.ReadBarcodesAsync(filePath, cancellationToken);
-            if (!readResult.BarcodeColumnFound)
+            if (!readResult.BarcodeColumnFound || readResult.Records.Count == 0)
             {
-                await _logger.LogWarningAsync(
-                    $"Файл {sourceFileName} пропущен: колонка со штрихкодом не найдена.", cancellationToken);
+                System.Console.WriteLine($"  Пропущен: нет штрихкодов.");
                 return false;
             }
 
             var barcodes = readResult.Records.ToArray();
-            await _logger.LogInfoAsync(
-                $"Штрихкодов найдено: {barcodes.Length}.", cancellationToken);
-
-            if (barcodes.Length == 0)
-            {
-                await _logger.LogWarningAsync(
-                    $"В файле {sourceFileName} нет штрихкодов.", cancellationToken);
-                return false;
-            }
-
             var outputPath = BuildOutputPath(filePath);
+
             _excelWriter.Create(outputPath, PriceMappingService.OutputStores);
-            await _logger.LogInfoAsync($"Файл результатов создан: {outputPath}", cancellationToken);
+            System.Console.WriteLine($"Создан файл результатов: {Path.GetFileName(outputPath)}");
+            System.Console.WriteLine($"Обработка {barcodes.Length} штрихкодов в {_settings.MaxParallelism} потоков...");
 
-            foreach (var record in barcodes)
-            {
-                await _logger.LogInfoAsync(
-                    $"Обработка штрихкода {record.Barcode} (строка {record.SourceRow}).", cancellationToken);
+            var results = new ConcurrentBag<(BarcodeRecord Record, ParsedProductPrices Prices)>();
+            int errors = 0;
 
-                var lookupResult = await GetPricesAsync(record.Barcode, cache, cancellationToken);
-
-                if (!lookupResult.HasPrices)
+            await Parallel.ForEachAsync(
+                barcodes,
+                new ParallelOptions
                 {
-                    await _logger.LogWarningAsync(
-                        $"Штрихкод {record.Barcode}: цены не найдены.", cancellationToken);
-                }
+                    MaxDegreeOfParallelism = _settings.MaxParallelism,
+                    CancellationToken = cancellationToken
+                },
+                async (record, ct) =>
+                {
+                    var lookupResult = await GetPricesAsync(record.Barcode, cache, ct);
 
-                _excelWriter.AddRow(record.Barcode, lookupResult.Prices);
-            }
+                    if (!lookupResult.ServiceSucceeded)
+                        Interlocked.Increment(ref errors);
+
+                    results.Add((record, lookupResult.Prices));
+                });
+
+            foreach (var (record, prices) in results.OrderBy(r => r.Record.SourceRow))
+                _excelWriter.AddRow(record.Barcode, prices);
 
             await _excelWriter.SaveAsync(cancellationToken);
-            await _logger.LogInfoAsync($"Сохранён результат: {outputPath}", cancellationToken);
+            System.Console.WriteLine($"Сохранено: {outputPath}");
+
+            if (errors > 0)
+                System.Console.WriteLine($"  Ошибок по штрихкодам: {errors}");
 
             await _monitoringReportService.ProcessFileAsync(filePath, outputPath, cancellationToken);
 
@@ -142,29 +139,21 @@ public sealed class ParsingPipeline
 
     private async Task<PriceLookupResult> GetPricesAsync(
         string barcode,
-        Dictionary<string, ParsedProductPrices> cache,
+        ConcurrentDictionary<string, ParsedProductPrices> cache,
         CancellationToken cancellationToken)
     {
         if (cache.TryGetValue(barcode, out var cachedPrices))
-        {
-            await _logger.LogInfoAsync($"Штрихкод {barcode}: взято из кэша.", cancellationToken);
             return new PriceLookupResult(true, cachedPrices.PricesByStore.Count > 0, cachedPrices);
-        }
 
         try
         {
-            await _logger.LogInfoAsync($"Штрихкод {barcode}: запрос к infoprice.by.", cancellationToken);
             var html = await _httpFetcher.FetchAsync(barcode, cancellationToken);
             var result = _priceParser.Parse(barcode, html);
+
             if (result.Prices.PricesByStore.Count == 0)
-            {
-                await _logger.LogWarningAsync($"Штрихкод {barcode}: сервис не вернул цены.", cancellationToken);
                 return new PriceLookupResult(true, false, result.Prices);
-            }
 
             cache[barcode] = result.Prices;
-            await _logger.LogInfoAsync($"Штрихкод {barcode}: цены получены.", cancellationToken);
-
             return new PriceLookupResult(true, true, result.Prices);
         }
         catch (Exception exception)
