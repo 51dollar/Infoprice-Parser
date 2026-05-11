@@ -190,19 +190,20 @@ public sealed class ParsingPipeline
     private string BuildOutputPath(string sourceFilePath)
     {
         var fileName = Path.GetFileNameWithoutExtension(sourceFilePath);
-        return BuildUniquePath(_settings.OutputFolder, fileName, "price");
+        var extension = Path.GetExtension(sourceFilePath);
+        return BuildUniquePath(_settings.OutputFolder, fileName, "price", extension);
     }
 
-    private static string BuildUniquePath(string folder, string baseName, string suffix)
+    private static string BuildUniquePath(string folder, string baseName, string suffix, string extension)
     {
         var date = DateTime.Now.ToString("dd.MM.yyyy");
-        var candidate = Path.Combine(folder, $"{baseName}-{suffix}-{date}.xlsx");
+        var candidate = Path.Combine(folder, $"{baseName}-{suffix}-{date}{extension}");
         if (!File.Exists(candidate))
             return candidate;
 
         for (var count = 1; ; count++)
         {
-            candidate = Path.Combine(folder, $"{baseName}-{suffix}-{date}-{count}.xlsx");
+            candidate = Path.Combine(folder, $"{baseName}-{suffix}-{date}-{count}{extension}");
             if (!File.Exists(candidate))
                 return candidate;
         }

@@ -141,7 +141,8 @@ public sealed class MonitoringReportService : IMonitoringReportService
             ws.ConditionalFormats.RemoveAll();
 
         var baseName = Path.GetFileNameWithoutExtension(inputFilePath);
-        var outputPath = BuildMonitoringPath(_settings.ProcessedFolder, baseName);
+        var extension = Path.GetExtension(inputFilePath);
+        var outputPath = BuildMonitoringPath(_settings.ProcessedFolder, baseName, extension);
 
         Directory.CreateDirectory(_settings.ProcessedFolder);
         wb.SaveAs(outputPath);
@@ -222,16 +223,16 @@ public sealed class MonitoringReportService : IMonitoringReportService
         return value.Length >= 6 && value.All(char.IsDigit);
     }
 
-    private static string BuildMonitoringPath(string folder, string baseName)
+    private static string BuildMonitoringPath(string folder, string baseName, string extension)
     {
         var date = DateTime.Now.ToString("dd.MM.yyyy");
-        var candidate = Path.Combine(folder, $"{baseName}-monitoring-{date}.xlsx");
+        var candidate = Path.Combine(folder, $"{baseName}-monitoring-{date}{extension}");
         if (!File.Exists(candidate))
             return candidate;
 
         for (var count = 1; ; count++)
         {
-            candidate = Path.Combine(folder, $"{baseName}-monitoring-{date}-{count}.xlsx");
+            candidate = Path.Combine(folder, $"{baseName}-monitoring-{date}-{count}{extension}");
             if (!File.Exists(candidate))
                 return candidate;
         }
