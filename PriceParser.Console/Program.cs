@@ -35,6 +35,7 @@ services.AddSingleton<IMonitoringReportService, MonitoringReportService>();
 services.AddSingleton<ILoggerService, FileLoggerService>();
 services.AddSingleton<PriceMappingService>();
 services.AddSingleton<ParsingPipeline>();
+services.AddSingleton<Orchestrator>();
 
 // Ручной HttpClient без логгирующих обработчиков (IHttpClientFactory не используется).
 services.AddSingleton<HttpClient>(sp =>
@@ -45,9 +46,9 @@ services.AddSingleton<HttpClient>(sp =>
 
 // Запуск основного цикла обработки.
 await using var provider = services.BuildServiceProvider();
-var pipeline = provider.GetRequiredService<ParsingPipeline>();
+var orchestrator = provider.GetRequiredService<Orchestrator>();
 
-await pipeline.RunAsync(CancellationToken.None);
+await orchestrator.RunAsync(CancellationToken.None);
 
 /// <summary>Преобразует относительные пути в конфиге в абсолютные относительно basePath.</summary>
 static void NormalizeSettingsPaths(AppSettings settings, string basePath)

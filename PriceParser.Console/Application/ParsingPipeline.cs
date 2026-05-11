@@ -18,7 +18,6 @@ public sealed class ParsingPipeline
     private readonly IExcelWriter _excelWriter;
     private readonly IHttpFetcher _httpFetcher;
     private readonly IPriceParser _priceParser;
-    private readonly IMonitoringReportService _monitoringReportService;
     private readonly ILoggerService _logger;
 
     public ParsingPipeline(
@@ -27,7 +26,6 @@ public sealed class ParsingPipeline
         IExcelWriter excelWriter,
         IHttpFetcher httpFetcher,
         IPriceParser priceParser,
-        IMonitoringReportService monitoringReportService,
         ILoggerService logger)
     {
         _settings = settings;
@@ -35,12 +33,11 @@ public sealed class ParsingPipeline
         _excelWriter = excelWriter;
         _httpFetcher = httpFetcher;
         _priceParser = priceParser;
-        _monitoringReportService = monitoringReportService;
         _logger = logger;
     }
 
     /// <summary>Точка входа: поиск файлов, итерация по ним, запуск обработки.</summary>
-    public async Task RunAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<FileProcessResult>> RunAsync(CancellationToken cancellationToken)
     {
         System.Console.WriteLine("Запуск обработки прайс-листов.");
         System.Console.WriteLine($"  Папка ввода:    {_settings.InputFolder}");
@@ -60,22 +57,22 @@ public sealed class ParsingPipeline
         if (inputFiles.Count == 0)
         {
             System.Console.WriteLine("Нет Excel-файлов для обработки. Завершено.");
-            return;
+            return [];
         }
 
         var cache = new ConcurrentDictionary<string, ParsedProductPrices>(StringComparer.OrdinalIgnoreCase);
-        var processedCount = 0;
+        var results = new List<FileProcessResult>(inputFiles.Count);
 
         foreach (var filePath in inputFiles)
-        {
-            if (await ProcessFileAsync(filePath, cache, cancellationToken))
-                processedCount++;
-        }
+            results.Add(await ProcessFileAsync(filePath, cache, cancellationToken));
 
+        var processedCount = results.Count(r => r.Success);
         System.Console.WriteLine($"Обработка завершена. Обработано файлов: {processedCount} из {inputFiles.Count}.");
+
+        return results;
     }
 
-    private async Task<bool> ProcessFileAsync(
+    private async Task<FileProcessResult> ProcessFileAsync(
         string filePath,
         ConcurrentDictionary<string, ParsedProductPrices> cache,
         CancellationToken cancellationToken)
@@ -90,7 +87,7 @@ public sealed class ParsingPipeline
             if (!readResult.BarcodeColumnFound || readResult.Records.Count == 0)
             {
                 System.Console.WriteLine($"  Пропущен: нет штрихкодов.");
-                return false;
+                return new FileProcessResult(filePath, false, null);
             }
 
             var barcodes = readResult.Records.ToArray();
@@ -134,16 +131,12 @@ public sealed class ParsingPipeline
                 .DistinctBy(x => x.Barcode)
                 .ToDictionary(x => x.Barcode, x => x.Prices, StringComparer.OrdinalIgnoreCase);
 
-            await _monitoringReportService.ProcessFileAsync(filePath, outputData, cancellationToken);
-
-            outputData.Clear();
-
-            return true;
+            return new FileProcessResult(filePath, true, outputData);
         }
         catch (Exception exception)
         {
             await _logger.LogErrorAsync(sourceFileName, exception, cancellationToken);
-            return false;
+            return new FileProcessResult(filePath, false, null);
         }
     }
 
@@ -212,3 +205,9 @@ public sealed class ParsingPipeline
     /// <summary>Результат поиска цен: успешен ли запрос, есть ли цены, сами цены.</summary>
     private sealed record PriceLookupResult(bool ServiceSucceeded, bool HasPrices, ParsedProductPrices Prices);
 }
+
+/// <summary>Результат обработки одного файла: путь, успех, выходные данные для мониторинга.</summary>
+public sealed record FileProcessResult(
+    string FilePath,
+    bool Success,
+    IReadOnlyDictionary<string, ParsedProductPrices>? OutputData);
