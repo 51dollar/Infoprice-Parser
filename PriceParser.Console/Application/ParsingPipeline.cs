@@ -1,14 +1,12 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
+using PriceParser.Console.Utils;
 
 namespace PriceParser.Console.Application;
 
-/// <summary>
-/// Главный оркестратор: обходит файлы во входной папке, для каждого запускает
-/// параллельный опрос API InfoPrice, сохраняет результат и строит мониторинг.
-/// </summary>
 public sealed class ParsingPipeline
 {
     private static readonly string[] ExcelMasks = ["*.xlsx", "*.xlsm", "*.xltx", "*.xltm"];
@@ -36,69 +34,84 @@ public sealed class ParsingPipeline
         _logger = logger;
     }
 
-    /// <summary>Точка входа: поиск файлов, итерация по ним, запуск обработки.</summary>
     public async Task<IReadOnlyList<FileProcessResult>> RunAsync(CancellationToken cancellationToken)
     {
-        System.Console.WriteLine("Запуск обработки прайс-листов.");
-        System.Console.WriteLine($"  Папка ввода:    {_settings.InputFolder}");
-        System.Console.WriteLine($"  Папка вывода:   {_settings.OutputFolder}");
-        System.Console.WriteLine($"  Потоков:        {_settings.MaxParallelism}");
-
         ValidationHelper.Validate(_settings);
 
         Directory.CreateDirectory(_settings.InputFolder);
         Directory.CreateDirectory(_settings.OutputFolder);
         Directory.CreateDirectory(_settings.ProcessedFolder);
-        System.Console.WriteLine("Папки проверены.");
 
         var inputFiles = GetInputFiles(_settings.InputFolder);
-        System.Console.WriteLine($"Найдено файлов: {inputFiles.Count}");
+        ConsoleHelper.WriteInfo($"Найдено файлов: {inputFiles.Count}");
 
         if (inputFiles.Count == 0)
         {
-            System.Console.WriteLine("Нет Excel-файлов для обработки. Завершено.");
+            ConsoleHelper.WriteWarning("Нет Excel-файлов для обработки. Завершено.");
             return [];
         }
 
         var cache = new ConcurrentDictionary<string, ParsedProductPrices>(StringComparer.OrdinalIgnoreCase);
         var results = new List<FileProcessResult>(inputFiles.Count);
+        var fileIndex = 0;
 
         foreach (var filePath in inputFiles)
-            results.Add(await ProcessFileAsync(filePath, cache, cancellationToken));
+        {
+            fileIndex++;
+            results.Add(await ProcessFileAsync(filePath, fileIndex, inputFiles.Count, cache, cancellationToken));
+        }
 
         var processedCount = results.Count(r => r.Success);
-        System.Console.WriteLine($"Обработка завершена. Обработано файлов: {processedCount} из {inputFiles.Count}.");
+        ConsoleHelper.WriteInfo($"Обработано файлов: {processedCount} из {inputFiles.Count}");
 
         return results;
     }
 
     private async Task<FileProcessResult> ProcessFileAsync(
         string filePath,
+        int fileIndex,
+        int totalFiles,
         ConcurrentDictionary<string, ParsedProductPrices> cache,
         CancellationToken cancellationToken)
     {
         var sourceFileName = Path.GetFileName(filePath);
+        var fileStopwatch = Stopwatch.StartNew();
 
         try
         {
-            System.Console.WriteLine($"--- {sourceFileName} ---");
+            ConsoleHelper.WriteFileHeader(fileIndex, totalFiles, sourceFileName);
 
+            // Чтение штрихкодов
+            var stepSw = Stopwatch.StartNew();
             var readResult = await _excelReader.ReadBarcodesAsync(filePath, cancellationToken);
+            stepSw.Stop();
+
             if (!readResult.BarcodeColumnFound || readResult.Records.Count == 0)
             {
-                System.Console.WriteLine($"  Пропущен: нет штрихкодов.");
+                ConsoleHelper.WriteStep("Чтение штрихкодов", true, stepSw.Elapsed.TotalSeconds);
+                ConsoleHelper.WriteWarning("Пропущен: нет штрихкодов.");
+                ConsoleHelper.WriteFileSummary(fileStopwatch.Elapsed.TotalSeconds);
                 return new FileProcessResult(filePath, false, null);
             }
 
-            var barcodes = readResult.Records.ToArray();
+            ConsoleHelper.WriteStep("Чтение штрихкодов", true, stepSw.Elapsed.TotalSeconds);
+
+            // Создание выходного файла
+            stepSw.Restart();
             var outputPath = BuildOutputPath(filePath);
-
             _excelWriter.Create(outputPath, PriceMappingService.OutputStores);
-            System.Console.WriteLine($"Создан файл результатов: {Path.GetFileName(outputPath)}");
-            System.Console.WriteLine($"Обработка {barcodes.Length} штрихкодов в {_settings.MaxParallelism} потоков...");
+            stepSw.Stop();
+            ConsoleHelper.WriteStep("Создание выходного файла", true, stepSw.Elapsed.TotalSeconds);
 
+            // Загрузка цен
+            var barcodes = readResult.Records.ToArray();
+            var loadSw = Stopwatch.StartNew();
             var results = new ConcurrentBag<(BarcodeRecord Record, ParsedProductPrices Prices)>();
             int errors = 0;
+            int completed = 0;
+            var total = barcodes.Length;
+
+            ConsoleHelper.WriteProgress(0, total);
 
             await Parallel.ForEachAsync(
                 barcodes,
@@ -115,32 +128,50 @@ public sealed class ParsingPipeline
                         Interlocked.Increment(ref errors);
 
                     results.Add((record, lookupResult.Prices));
+
+                    var currentCount = Interlocked.Increment(ref completed);
+                    if (currentCount % 5 == 0 || currentCount == total)
+                        ConsoleHelper.WriteProgress(currentCount, total);
                 });
 
+            loadSw.Stop();
+            var loadDesc = $"Загрузка цен ({total} штрихкодов)";
+            if (errors > 0)
+                loadDesc += $" ({errors} ош.)";
+
+            ConsoleHelper.ClearCurrentLine();
+            ConsoleHelper.WriteStep(loadDesc, true, loadSw.Elapsed.TotalSeconds);
+
+            // Сохранение результатов
+            stepSw.Restart();
             foreach (var (record, prices) in results.OrderBy(r => r.Record.SourceRow))
                 _excelWriter.AddRow(record.Barcode, prices);
 
             await _excelWriter.SaveAsync(cancellationToken);
-            System.Console.WriteLine($"Сохранено: {outputPath}");
+            stepSw.Stop();
+            ConsoleHelper.WriteStep("Сохранение результатов", true, stepSw.Elapsed.TotalSeconds);
 
-            if (errors > 0)
-                System.Console.WriteLine($"  Ошибок по штрихкодам: {errors}");
-
+            // Формирование выходных данных
             var outputData = results
                 .Select(r => (r.Record.Barcode, r.Prices))
                 .DistinctBy(x => x.Barcode)
                 .ToDictionary(x => x.Barcode, x => x.Prices, StringComparer.OrdinalIgnoreCase);
 
+            fileStopwatch.Stop();
+            ConsoleHelper.WriteFileSummary(fileStopwatch.Elapsed.TotalSeconds);
+
             return new FileProcessResult(filePath, true, outputData);
         }
         catch (Exception exception)
         {
+            fileStopwatch.Stop();
+            ConsoleHelper.WriteError($"Ошибка: {exception.Message}");
             await _logger.LogErrorAsync(sourceFileName, exception, cancellationToken);
+            ConsoleHelper.WriteFileSummary(fileStopwatch.Elapsed.TotalSeconds);
             return new FileProcessResult(filePath, false, null);
         }
     }
 
-    /// <summary>Получает цены для штрихкода: проверяет кэш, при промахе — HTTP + парсинг.</summary>
     private async Task<PriceLookupResult> GetPricesAsync(
         string barcode,
         ConcurrentDictionary<string, ParsedProductPrices> cache,
@@ -202,11 +233,9 @@ public sealed class ParsingPipeline
         }
     }
 
-    /// <summary>Результат поиска цен: успешен ли запрос, есть ли цены, сами цены.</summary>
     private sealed record PriceLookupResult(bool ServiceSucceeded, bool HasPrices, ParsedProductPrices Prices);
 }
 
-/// <summary>Результат обработки одного файла: путь, успех, выходные данные для мониторинга.</summary>
 public sealed record FileProcessResult(
     string FilePath,
     bool Success,

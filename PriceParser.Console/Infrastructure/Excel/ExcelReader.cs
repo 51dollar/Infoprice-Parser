@@ -2,6 +2,7 @@ using ClosedXML.Excel;
 using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
+using PriceParser.Console.Utils;
 
 namespace PriceParser.Console.Infrastructure.Excel;
 
@@ -22,12 +23,12 @@ public sealed class ExcelReader : IExcelReader
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        System.Console.WriteLine($"Читаю файл: {filePath}");
+        ConsoleHelper.WriteInfo($"Читаю файл: {filePath}");
 
         using var workbook = new XLWorkbook(filePath);
         if (!workbook.Worksheets.Any())
         {
-            System.Console.WriteLine($"  Файл не содержит листов.");
+            ConsoleHelper.WriteWarning("Файл не содержит листов.");
             return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
         }
 
@@ -41,7 +42,7 @@ public sealed class ExcelReader : IExcelReader
             var usedRange = worksheet.RangeUsed();
             if (usedRange is null)
             {
-                System.Console.WriteLine($"  Лист '{worksheet.Name}' — пустой, пропущен.");
+                ConsoleHelper.WriteInfo($"Лист '{worksheet.Name}' — пустой, пропущен.");
                 continue;
             }
 
@@ -51,7 +52,7 @@ public sealed class ExcelReader : IExcelReader
                 var headerText = headerCell.GetFormattedString().Trim();
                 matchedColumns.Add($"лист '{worksheet.Name}', ячейка {headerCell.Address}");
 
-                System.Console.WriteLine($"  Колонка ШК: лист '{worksheet.Name}', ячейка {headerCell.Address} ('{headerText}')");
+                ConsoleHelper.WriteInfo($"Колонка ШК: лист '{worksheet.Name}', ячейка {headerCell.Address} ('{headerText}')");
 
                 ReadColumnValues(worksheet, usedRange, headerCell, records, cancellationToken);
             }
@@ -59,11 +60,11 @@ public sealed class ExcelReader : IExcelReader
 
         if (matchedColumns.Count == 0)
         {
-            System.Console.WriteLine($"  Колонка с штрихкодом не найдена.");
+            ConsoleHelper.WriteWarning("Колонка с штрихкодом не найдена.");
             return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
         }
 
-        System.Console.WriteLine($"  Прочитано штрихкодов: {records.Count}.");
+        ConsoleHelper.WriteInfo($"Прочитано штрихкодов: {records.Count}.");
         return new ExcelBarcodeReadResult(true, records, matchedColumns);
     }
 

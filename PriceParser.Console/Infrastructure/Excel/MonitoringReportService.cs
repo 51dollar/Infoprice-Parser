@@ -1,15 +1,13 @@
+using System.Diagnostics;
 using System.Globalization;
 using ClosedXML.Excel;
 using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
 using PriceParser.Console.Core.Models;
+using PriceParser.Console.Utils;
 
 namespace PriceParser.Console.Infrastructure.Excel;
 
-/// <summary>
-/// Строит мониторинговый отчёт: открывает исходный файл, находит колонки магазинов
-/// и заполняет их ценами из выходных данных. Сохраняет копию в processed/.
-/// </summary>
 public sealed class MonitoringReportService : IMonitoringReportService
 {
     private readonly AppSettings _settings;
@@ -33,13 +31,13 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
         if (mappings.Length == 0)
         {
-            System.Console.WriteLine("  Мониторинг пропущен: StoreMappings пустой.");
+            ConsoleHelper.WriteWarning("Мониторинг пропущен: StoreMappings пустой.");
             return;
         }
 
         if (outputData.Count == 0)
         {
-            System.Console.WriteLine("  Мониторинг пропущен: нет данных.");
+            ConsoleHelper.WriteWarning("Мониторинг пропущен: нет данных.");
             return;
         }
 
@@ -47,13 +45,12 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
         try
         {
-            System.Console.WriteLine($"  Мониторинг: {inputName}");
-
             var outputFlat = FlattenOutputData(outputData, mappings);
             FillInputFile(inputFilePath, outputFlat, mappings, cancellationToken);
         }
         catch (Exception ex)
         {
+            ConsoleHelper.WriteError($"Ошибка мониторинга: {ex.Message}");
             await _logger.LogErrorAsync(inputName, ex, cancellationToken);
         }
     }
@@ -98,12 +95,14 @@ public sealed class MonitoringReportService : IMonitoringReportService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        var stepSw = Stopwatch.StartNew();
+
         using var wb = new XLWorkbook(inputFilePath);
         var sheetInfo = FindSheet(wb, mappings);
 
         if (sheetInfo is null)
         {
-            System.Console.WriteLine("    Не найдена таблица с ШК и магазинами.");
+            ConsoleHelper.WriteWarning("Не найдена таблица с ШК и магазинами.");
             return;
         }
 
@@ -147,7 +146,8 @@ public sealed class MonitoringReportService : IMonitoringReportService
         Directory.CreateDirectory(_settings.ProcessedFolder);
         wb.SaveAs(outputPath);
 
-        System.Console.WriteLine($"    Заполнено строк: {filledCount}. Сохранён: {Path.GetFileName(outputPath)}");
+        stepSw.Stop();
+        ConsoleHelper.WriteStep($"Заполнение цен ({filledCount} строк)", true, stepSw.Elapsed.TotalSeconds);
     }
 
     private SheetInfo? FindSheet(XLWorkbook workbook, MonitoringStoreMapping[] mappings)

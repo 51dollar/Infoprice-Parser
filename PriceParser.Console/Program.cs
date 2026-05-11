@@ -8,6 +8,9 @@ using PriceParser.Console.Infrastructure.Excel;
 using PriceParser.Console.Infrastructure.Http;
 using PriceParser.Console.Infrastructure.Logging;
 using PriceParser.Console.Infrastructure.Parsing;
+using PriceParser.Console.Utils;
+
+System.Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 // Определяем базовый путь для конфигурации: сначала текущая директория, затем папка сборки.
 var configurationBasePath = File.Exists(Path.Combine(Environment.CurrentDirectory, "appsettings.json"))
@@ -21,6 +24,12 @@ var configuration = new ConfigurationBuilder()
 
 var settings = configuration.Get<AppSettings>() ?? new AppSettings();
 NormalizeSettingsPaths(settings, configurationBasePath);
+
+ConsoleHelper.WriteHeader(
+    settings.InputFolder,
+    settings.OutputFolder,
+    settings.ProcessedFolder,
+    settings.MaxParallelism);
 
 // Настройка DI-контейнера: все зависимости регистрируются как singletons,
 // чтобы не плодить HTTP-клиенты и Excel-воркбуки на каждый файл.
@@ -49,6 +58,8 @@ await using var provider = services.BuildServiceProvider();
 var orchestrator = provider.GetRequiredService<Orchestrator>();
 
 await orchestrator.RunAsync(CancellationToken.None);
+
+ConsoleHelper.WaitForExit();
 
 /// <summary>Преобразует относительные пути в конфиге в абсолютные относительно basePath.</summary>
 static void NormalizeSettingsPaths(AppSettings settings, string basePath)
