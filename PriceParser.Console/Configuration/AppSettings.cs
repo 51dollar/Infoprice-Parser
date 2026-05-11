@@ -22,6 +22,10 @@ public sealed class AppSettings
     public int RetryCount { get; set; } = 3;
 
     public int MaxParallelism { get; set; } = 4;
+
+    public string ApiUrl { get; set; } = "https://api.infoprice.by/InfoPrice.Goods?v=0";
+
+    public string ServerKey { get; set; } = "";
 }
 
 public sealed class MonitoringSettings

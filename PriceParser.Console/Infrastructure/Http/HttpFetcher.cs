@@ -13,15 +13,13 @@ namespace PriceParser.Console.Infrastructure.Http;
 public sealed class HttpFetcher : IHttpFetcher
 {
     public const string ClientName = "InfoPrice";
-    private const string ApiUrl = "https://api.infoprice.by/InfoPrice.Goods?v=0";
-
     private static readonly string RequestJsonTemplate =
         $$"""
         {
           "CRC": "",
           "Packet": {
             "FromId": "10003001",
-            "ServerKey": "omt5W465fjwlrtxcEco97kew2dkdrorqqq",
+            "ServerKey": "{SERVERKEY}",
             "Data": {
               "ContractorId": "",
               "GoodsGroupId": "",
@@ -64,9 +62,11 @@ public sealed class HttpFetcher : IHttpFetcher
 
     private async Task<string> FetchOnceAsync(string barcode, CancellationToken cancellationToken)
     {
-        var requestJson = RequestJsonTemplate.Replace("{BARCODE}", barcode);
+        var requestJson = RequestJsonTemplate
+            .Replace("{BARCODE}", barcode)
+            .Replace("{SERVERKEY}", _settings.ServerKey);
         using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(ApiUrl, content, cancellationToken);
+        using var response = await _httpClient.PostAsync(_settings.ApiUrl, content, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadAsStringAsync(cancellationToken);
