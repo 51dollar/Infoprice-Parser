@@ -1,7 +1,8 @@
 using System.Globalization;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
-using PriceParser.Console.Configuration;
+        using PriceParser.Console.Configuration;
+using PriceParser.Console.Utils;
 
 namespace PriceParser.Console.Infrastructure.Excel;
 
@@ -27,7 +28,12 @@ public sealed class MonitoringReportBuilder
 
         var sheetInfo = FindSheet(wbPart, mappings, barcodeColumnNames);
         if (sheetInfo is null)
+        {
+            var searched = string.Join(", ", barcodeColumnNames.Select(n => $"'{n}'"));
+            ConsoleHelper.WriteError($"В файле '{Path.GetFileName(inputFilePath)}' не найдена таблица с штрихкодом ({searched}).");
+            ConsoleHelper.WriteError("Проверьте настройки BarcodeColumnNames и Monitoring.StoreMappings в appsettings.json.");
             return 0;
+        }
 
         var wsPart = sheetInfo.WorksheetPart;
         var ws = wsPart.Worksheet;

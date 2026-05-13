@@ -71,11 +71,13 @@ public sealed class ExcelReader : IExcelReader
                 }
             }
 
-            if (matchedColumns.Count == 0)
-            {
-                ConsoleHelper.WriteWarning("Колонка с штрихкодом не найдена.");
-                return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
-            }
+        if (matchedColumns.Count == 0)
+        {
+            var searched = string.Join(", ", _barcodeColumnNames.Select(n => $"'{n}'"));
+            ConsoleHelper.WriteError($"Не найдена колонка, содержащая: {searched}.");
+            ConsoleHelper.WriteError("Проверьте настройку BarcodeColumnNames в appsettings.json.");
+            return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
+        }
 
             ConsoleHelper.WriteInfo($"Прочитано штрихкодов: {records.Count}.");
             return new ExcelBarcodeReadResult(true, records, matchedColumns);
