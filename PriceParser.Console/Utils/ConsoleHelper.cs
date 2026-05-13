@@ -167,16 +167,10 @@ public static class ConsoleHelper
     public static void WaitForExit()
     {
         System.Console.ForegroundColor = ConsoleColor.Gray;
-        System.Console.Write("  Нажмите Enter или Esc для выхода...");
+        System.Console.Write("  Нажмите любую клавишу для выхода...");
         System.Console.ResetColor();
 
-        while (true)
-        {
-            var key = System.Console.ReadKey(true);
-            if (key.Key == ConsoleKey.Enter || key.Key == ConsoleKey.Escape)
-                break;
-        }
-
+        System.Console.ReadKey(true);
         System.Console.WriteLine();
     }
 }

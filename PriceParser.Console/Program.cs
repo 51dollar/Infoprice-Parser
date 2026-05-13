@@ -53,11 +53,52 @@ services.AddSingleton<HttpClient>(sp =>
     return new HttpClient { Timeout = TimeSpan.FromSeconds(s.TimeoutSeconds) };
 });
 
+// Создаём CancellationTokenSource для возможности прервать выполнение по Ctrl+C или Escape.
+using var cts = new CancellationTokenSource();
+
+Console.CancelKeyPress += (_, args) =>
+{
+    args.Cancel = true;
+    cts.Cancel();
+};
+
+var cancellationToken = cts.Token;
+
+// Фоновый поток для выхода по Escape во время выполнения.
+_ = Task.Run(() =>
+{
+    try
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (System.Console.KeyAvailable && System.Console.ReadKey(true).Key == ConsoleKey.Escape)
+            {
+                ConsoleHelper.WriteWarning("Получена команда выхода. Завершение работы...");
+                cts.Cancel();
+                break;
+            }
+
+            Task.Delay(200, CancellationToken.None).Wait();
+        }
+    }
+    catch
+    {
+        // подавляем исключения при завершении
+    }
+}, CancellationToken.None);
+
 // Запуск основного цикла обработки.
 await using var provider = services.BuildServiceProvider();
 var orchestrator = provider.GetRequiredService<Orchestrator>();
 
-await orchestrator.RunAsync(CancellationToken.None);
+try
+{
+    await orchestrator.RunAsync(cancellationToken);
+}
+catch (OperationCanceledException)
+{
+    ConsoleHelper.WriteWarning("Обработка прервана пользователем.");
+}
 
 ConsoleHelper.WaitForExit();
 
