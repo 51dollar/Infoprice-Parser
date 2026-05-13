@@ -25,47 +25,61 @@ public sealed class ExcelReader : IExcelReader
 
         ConsoleHelper.WriteInfo($"Читаю файл: {filePath}");
 
-        using var workbook = new XLWorkbook(filePath);
-        if (!workbook.Worksheets.Any())
+        XLWorkbook workbook;
+        try
         {
-            ConsoleHelper.WriteWarning("Файл не содержит листов.");
+            workbook = new XLWorkbook(filePath);
+        }
+        catch (IOException)
+        {
+            var fileName = Path.GetFileName(filePath);
+            ConsoleHelper.WriteError($"Файл '{fileName}' открыт в другой программе. Закройте файл и повторите попытку.");
             return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
         }
 
-        var records = new List<BarcodeRecord>();
-        var matchedColumns = new List<string>();
-
-        foreach (var worksheet in workbook.Worksheets)
+        using (workbook)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var usedRange = worksheet.RangeUsed();
-            if (usedRange is null)
+            if (!workbook.Worksheets.Any())
             {
-                ConsoleHelper.WriteInfo($"Лист '{worksheet.Name}' — пустой, пропущен.");
-                continue;
+                ConsoleHelper.WriteWarning("Файл не содержит листов.");
+                return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
             }
 
-            var headerCells = FindHeaderCells(usedRange, _barcodeColumnNames, cancellationToken);
-            foreach (var headerCell in headerCells)
+            var records = new List<BarcodeRecord>();
+            var matchedColumns = new List<string>();
+
+            foreach (var worksheet in workbook.Worksheets)
             {
-                var headerText = headerCell.GetFormattedString().Trim();
-                matchedColumns.Add($"лист '{worksheet.Name}', ячейка {headerCell.Address}");
+                cancellationToken.ThrowIfCancellationRequested();
 
-                ConsoleHelper.WriteInfo($"Колонка ШК: лист '{worksheet.Name}', ячейка {headerCell.Address} ('{headerText}')");
+                var usedRange = worksheet.RangeUsed();
+                if (usedRange is null)
+                {
+                    ConsoleHelper.WriteInfo($"Лист '{worksheet.Name}' — пустой, пропущен.");
+                    continue;
+                }
 
-                ReadColumnValues(worksheet, usedRange, headerCell, records, cancellationToken);
+                var headerCells = FindHeaderCells(usedRange, _barcodeColumnNames, cancellationToken);
+                foreach (var headerCell in headerCells)
+                {
+                    var headerText = headerCell.GetFormattedString().Trim();
+                    matchedColumns.Add($"лист '{worksheet.Name}', ячейка {headerCell.Address}");
+
+                    ConsoleHelper.WriteInfo($"Колонка ШК: лист '{worksheet.Name}', ячейка {headerCell.Address} ('{headerText}')");
+
+                    ReadColumnValues(worksheet, usedRange, headerCell, records, cancellationToken);
+                }
             }
-        }
 
-        if (matchedColumns.Count == 0)
-        {
-            ConsoleHelper.WriteWarning("Колонка с штрихкодом не найдена.");
-            return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
-        }
+            if (matchedColumns.Count == 0)
+            {
+                ConsoleHelper.WriteWarning("Колонка с штрихкодом не найдена.");
+                return new ExcelBarcodeReadResult(false, Array.Empty<BarcodeRecord>(), Array.Empty<string>());
+            }
 
-        ConsoleHelper.WriteInfo($"Прочитано штрихкодов: {records.Count}.");
-        return new ExcelBarcodeReadResult(true, records, matchedColumns);
+            ConsoleHelper.WriteInfo($"Прочитано штрихкодов: {records.Count}.");
+            return new ExcelBarcodeReadResult(true, records, matchedColumns);
+        }
     }
 
     private static List<IXLCell> FindHeaderCells(
