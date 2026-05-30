@@ -101,14 +101,13 @@ public sealed class MonitoringReportService : IMonitoringReportService
 
     private static string BuildMonitoringPath(string folder, string baseName, string extension)
     {
-        var date = DateTime.Now.ToString("dd.MM.yyyy");
-        var candidate = Path.Combine(folder, $"{baseName}-monitoring-{date}{extension}");
+        var candidate = Path.Combine(folder, $"{baseName}{extension}");
         if (!File.Exists(candidate))
             return candidate;
 
         for (var count = 1; ; count++)
         {
-            candidate = Path.Combine(folder, $"{baseName}-monitoring-{date}-{count}{extension}");
+            candidate = Path.Combine(folder, $"{baseName}-{count}{extension}");
             if (!File.Exists(candidate))
                 return candidate;
         }
