@@ -10,15 +10,20 @@ namespace PriceParser.Console.Infrastructure.Logging;
 /// </summary>
 public sealed class FileLoggerService : ILoggerService
 {
-    private readonly string _logsFolder;
+    private readonly Lazy<string> _logsFolder;
 
     public FileLoggerService()
     {
-        var basePath = File.Exists(Path.Combine(Environment.CurrentDirectory, "appsettings.json"))
-            ? Environment.CurrentDirectory
-            : AppContext.BaseDirectory;
+        _logsFolder = new Lazy<string>(() =>
+        {
+            var basePath = File.Exists(Path.Combine(Environment.CurrentDirectory, "appsettings.json"))
+                ? Environment.CurrentDirectory
+                : AppContext.BaseDirectory;
 
-        _logsFolder = Path.Combine(basePath, "logs");
+            var path = Path.Combine(basePath, "logs");
+            Directory.CreateDirectory(path);
+            return path;
+        });
     }
 
     public async Task LogErrorAsync(string context, Exception exception, CancellationToken cancellationToken)
@@ -34,11 +39,9 @@ public sealed class FileLoggerService : ILoggerService
 
     private async Task LogAsync(string level, string message, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_logsFolder);
-
         var timestamp = DateTime.Now;
         var header = $"{timestamp:yyyy-MM-dd HH:mm:ss.fff} [{level}]";
-        var logPath = Path.Combine(_logsFolder, $"run_{timestamp:yyyy-MM-dd}.txt");
+        var logPath = Path.Combine(_logsFolder.Value, $"run_{timestamp:yyyy-MM-dd}.txt");
         var entry = $"{header} {message}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
 
         System.Console.ForegroundColor = ConsoleColor.Red;

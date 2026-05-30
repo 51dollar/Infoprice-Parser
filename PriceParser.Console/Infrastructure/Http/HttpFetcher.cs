@@ -36,8 +36,14 @@ public sealed class HttpFetcher : IHttpFetcher
         }
         """;
 
+    private static readonly string[] _jsonParts;
     private readonly HttpClient _httpClient;
     private readonly AppSettings _settings;
+
+    static HttpFetcher()
+    {
+        _jsonParts = RequestJsonTemplate.Split(["{SERVERKEY}", "{BARCODE}"], StringSplitOptions.None);
+    }
 
     public HttpFetcher(HttpClient httpClient, AppSettings settings)
     {
@@ -62,9 +68,7 @@ public sealed class HttpFetcher : IHttpFetcher
 
     private async Task<string> FetchOnceAsync(string barcode, CancellationToken cancellationToken)
     {
-        var requestJson = RequestJsonTemplate
-            .Replace("{BARCODE}", barcode)
-            .Replace("{SERVERKEY}", _settings.ServerKey);
+        var requestJson = string.Concat(_jsonParts[0], _settings.ServerKey, _jsonParts[1], barcode, _jsonParts[2]);
         using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
         using var response = await _httpClient.PostAsync(_settings.ApiUrl, content, cancellationToken);
         response.EnsureSuccessStatusCode();

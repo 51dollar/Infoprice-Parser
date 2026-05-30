@@ -49,7 +49,7 @@ public sealed class MonitoringReportService : IMonitoringReportService
             var outputPath = BuildMonitoringPath(_settings.ProcessedFolder, baseName, extension);
 
             var stepSw = Stopwatch.StartNew();
-            var filledCount = new MonitoringReportBuilder().FillPrices(
+            var filledCount = MonitoringReportBuilder.FillPrices(
                 inputFilePath, outputPath, outputFlat, mappings, _settings.BarcodeColumnNames);
             stepSw.Stop();
 

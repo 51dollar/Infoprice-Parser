@@ -6,9 +6,9 @@ using PriceParser.Console.Utils;
 
 namespace PriceParser.Console.Infrastructure.Excel;
 
-public sealed class MonitoringReportBuilder
+public static class MonitoringReportBuilder
 {
-    public int FillPrices(
+    public static int FillPrices(
         string inputFilePath,
         string outputPath,
         Dictionary<string, Dictionary<string, float>> data,
@@ -26,7 +26,8 @@ public sealed class MonitoringReportBuilder
         if (wbPart is null)
             return 0;
 
-        var sheetInfo = FindSheet(wbPart, mappings, barcodeColumnNames);
+        var ssList = wbPart.SharedStringTablePart?.SharedStringTable?.Elements<SharedStringItem>().ToList();
+        var sheetInfo = FindSheet(wbPart, ssList, mappings, barcodeColumnNames);
         if (sheetInfo is null)
         {
             var searched = string.Join(", ", barcodeColumnNames.Select(n => $"'{n}'"));
@@ -40,8 +41,7 @@ public sealed class MonitoringReportBuilder
         if (ws is null)
             return 0;
 
-        var rows = ws.Descendants<Row>().ToList();
-        var sstPart = wbPart.SharedStringTablePart;
+        var rows = ws.Descendants<Row>();
         var filledCount = 0;
 
         foreach (var row in rows)
@@ -56,7 +56,7 @@ public sealed class MonitoringReportBuilder
             if (bcCell is null)
                 continue;
 
-            var barcode = GetCellValue(bcCell, sstPart)?.Trim();
+            var barcode = GetCellValue(bcCell, ssList)?.Trim();
             if (string.IsNullOrEmpty(barcode) || !IsBarcode(barcode))
                 continue;
 
@@ -88,13 +88,13 @@ public sealed class MonitoringReportBuilder
         int BarcodeColumn,
         Dictionary<string, int> StoreCols);
 
-    private SheetInfo? FindSheet(
+    private static SheetInfo? FindSheet(
         WorkbookPart wbPart,
+        List<SharedStringItem>? ssList,
         MonitoringStoreMapping[] mappings,
         string[] barcodeColumnNames)
     {
         var targetHeaders = mappings.Select(m => m.TargetColumnHeader).ToArray();
-        var sstPart = wbPart.SharedStringTablePart;
         SheetInfo? best = null;
 
         var workbook = wbPart.Workbook;
@@ -111,7 +111,7 @@ public sealed class MonitoringReportBuilder
             if (ws is null)
                 continue;
 
-            var rows = ws.Descendants<Row>().ToList();
+            var rows = ws.Descendants<Row>();
 
             foreach (var row in rows)
             {
@@ -119,11 +119,11 @@ public sealed class MonitoringReportBuilder
                     continue;
 
                 var cells = row.Elements<Cell>().ToList();
-                var barcodeCol = FindBarcodeColumn(cells, sstPart, barcodeColumnNames);
+                var barcodeCol = FindBarcodeColumn(cells, ssList, barcodeColumnNames);
                 if (barcodeCol is null)
                     continue;
 
-                var storeCols = FindStoreColumns(cells, sstPart, targetHeaders);
+                var storeCols = FindStoreColumns(cells, ssList, targetHeaders);
                 if (storeCols.Count == 0)
                     continue;
 
@@ -139,7 +139,7 @@ public sealed class MonitoringReportBuilder
 
     private static int? FindBarcodeColumn(
         List<Cell> cells,
-        SharedStringTablePart? sstPart,
+        List<SharedStringItem>? ssList,
         string[] barcodeColumnNames)
     {
         foreach (var cell in cells)
@@ -147,7 +147,7 @@ public sealed class MonitoringReportBuilder
             if (cell.CellReference?.Value is not { } refValue)
                 continue;
 
-            var text = GetCellValue(cell, sstPart)?.Trim();
+            var text = GetCellValue(cell, ssList)?.Trim();
             if (text is null)
                 continue;
 
@@ -163,7 +163,7 @@ public sealed class MonitoringReportBuilder
 
     private static Dictionary<string, int> FindStoreColumns(
         List<Cell> cells,
-        SharedStringTablePart? sstPart,
+        List<SharedStringItem>? ssList,
         string[] headers)
     {
         var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -175,7 +175,7 @@ public sealed class MonitoringReportBuilder
                 if (cell.CellReference?.Value is not { } refValue)
                     continue;
 
-                var text = GetCellValue(cell, sstPart)?.Trim();
+                var text = GetCellValue(cell, ssList)?.Trim();
                 if (text is null)
                     continue;
 
@@ -190,24 +190,18 @@ public sealed class MonitoringReportBuilder
         return result;
     }
 
-    private static string? GetCellValue(Cell cell, SharedStringTablePart? sstPart)
+    private static string? GetCellValue(Cell cell, List<SharedStringItem>? ssList)
     {
         var value = cell.CellValue?.Text;
         if (value is null)
             return null;
 
-        if (cell.DataType is not null && cell.DataType.Value == CellValues.SharedString && sstPart is not null)
+        if (cell.DataType is not null && cell.DataType.Value == CellValues.SharedString && ssList is not null)
         {
-            var sst = sstPart.SharedStringTable;
-            if (sst is null)
-                return value;
-
-            var items = sst.Elements<SharedStringItem>().ToList();
-
             if (int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var idx)
-                && idx >= 0 && idx < items.Count)
+                && idx >= 0 && idx < ssList.Count)
             {
-                return items[idx].Text?.Text;
+                return ssList[idx].Text?.Text;
             }
         }
 

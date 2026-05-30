@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.Net.Http;
+using ClosedXML.Excel;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using PriceParser.Console.Application;
 using PriceParser.Console.Configuration;
 using PriceParser.Console.Core.Interfaces;
-using PriceParser.Console.Application;
 using PriceParser.Console.Infrastructure.Excel;
 using PriceParser.Console.Infrastructure.Http;
 using PriceParser.Console.Infrastructure.Logging;
@@ -87,8 +89,11 @@ _ = Task.Run(() =>
     }
 }, CancellationToken.None);
 
+ThreadPool.SetMinThreads(Environment.ProcessorCount * 2, Environment.ProcessorCount * 2);
+
 // Запуск основного цикла обработки.
 await using var provider = services.BuildServiceProvider();
+await WarmupAsync(provider, cancellationToken);
 var orchestrator = provider.GetRequiredService<Orchestrator>();
 
 try
@@ -101,6 +106,38 @@ catch (OperationCanceledException)
 }
 
 ConsoleHelper.WaitForExit();
+
+static async Task WarmupAsync(IServiceProvider provider, CancellationToken ct)
+{
+    var sw = Stopwatch.StartNew();
+
+    provider.GetRequiredService<IExcelReader>();
+    provider.GetRequiredService<IExcelWriter>();
+    provider.GetRequiredService<IHttpFetcher>();
+    provider.GetRequiredService<IPriceParser>();
+    provider.GetRequiredService<ILoggerService>();
+    provider.GetRequiredService<ParsingPipeline>();
+    provider.GetRequiredService<Orchestrator>();
+
+    try
+    {
+        var fetcher = provider.GetRequiredService<IHttpFetcher>();
+        var parser = provider.GetRequiredService<IPriceParser>();
+        var html = await fetcher.FetchAsync("4810158000017", ct);
+        parser.Parse("4810158000017", html);
+    }
+    catch { }
+
+    try
+    {
+        using var wb = new XLWorkbook();
+        wb.Worksheets.Add("Warmup");
+    }
+    catch { }
+
+    sw.Stop();
+    ConsoleHelper.WriteStep("Прогрев", true, sw.Elapsed.TotalSeconds);
+}
 
 /// <summary>Преобразует относительные пути в конфиге в абсолютные относительно basePath.</summary>
 static void NormalizeSettingsPaths(AppSettings settings, string basePath)
