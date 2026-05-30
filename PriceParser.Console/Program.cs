@@ -29,7 +29,7 @@ ConsoleHelper.WriteHeader(
     settings.InputFolder,
     settings.OutputFolder,
     settings.ProcessedFolder,
-    settings.MaxParallelism);
+    Environment.ProcessorCount);
 
 // Настройка DI-контейнера: все зависимости регистрируются как singletons,
 // чтобы не плодить HTTP-клиенты и Excel-воркбуки на каждый файл.

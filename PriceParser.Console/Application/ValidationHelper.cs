@@ -14,7 +14,6 @@ public static class ValidationHelper
         EnsurePath(settings.OutputFolder, nameof(settings.OutputFolder));
         EnsurePath(settings.ProcessedFolder, nameof(settings.ProcessedFolder));
         EnsureTexts(settings.BarcodeColumnNames, nameof(settings.BarcodeColumnNames));
-        EnsurePositive(settings.MaxParallelism, nameof(settings.MaxParallelism));
         ValidateMonitoring(settings.Monitoring);
     }
 

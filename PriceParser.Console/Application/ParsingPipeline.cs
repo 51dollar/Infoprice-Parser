@@ -117,7 +117,7 @@ public sealed class ParsingPipeline
                 barcodes,
                 new ParallelOptions
                 {
-                    MaxDegreeOfParallelism = _settings.MaxParallelism,
+                    MaxDegreeOfParallelism = Environment.ProcessorCount,
                     CancellationToken = cancellationToken
                 },
                 async (record, ct) =>
